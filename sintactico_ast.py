@@ -3,6 +3,7 @@ class NodoAST:
     def traducirCPP(self): raise NotImplementedError()
     def traducirGo(self): raise NotImplementedError()
     def traducirRuby(self): raise NotImplementedError()
+    def to_dict(self): raise NotImplementedError()
 
 class NodoString(NodoAST):
     def __init__(self, valor): self.valor = valor
@@ -10,6 +11,7 @@ class NodoString(NodoAST):
     def traducirCPP(self): return self.valor[1]
     def traducirGo(self): return self.valor[1]
     def traducirRuby(self): return self.valor[1]
+    def to_dict(self): return {"Tipo": "String", "Valor": self.valor[1]}
 
 class NodoPrint(NodoAST):
     def __init__(self, expresiones): self.expresiones = expresiones
@@ -17,6 +19,7 @@ class NodoPrint(NodoAST):
     def traducirCPP(self): return f"std::cout << {' << '.join(e.traducirCPP() for e in self.expresiones)} << std::endl"
     def traducirGo(self): return f"fmt.Println({', '.join(e.traducirGo() for e in self.expresiones)})"
     def traducirRuby(self): return f"puts {', '.join(e.traducirRuby() for e in self.expresiones)}"
+    def to_dict(self): return {"Tipo": "SentenciaPrint", "Expresiones": [e.to_dict() for e in self.expresiones]}
 
 class NodoFuncion(NodoAST):
     def __init__(self, tipo, nombre, parametros, cuerpo):
@@ -37,6 +40,15 @@ class NodoFuncion(NodoAST):
 
     def traducirRuby(self):
         return f"def {self.nombre[1]}({', '.join(p.traducirRuby() for p in self.parametros)})\n    " + "\n    ".join(c.traducirRuby() for c in self.cuerpo) + "\nend"
+    
+    def to_dict(self):
+        return {
+            "Tipo": "Funcion",
+            "Nombre": self.nombre[1],
+            "Retorno": self.tipo[1],
+            "Parametros": [p.to_dict() for p in self.parametros],
+            "Cuerpo": [c.to_dict() for c in self.cuerpo]
+        }
 
 class NodoParametros(NodoAST):
     def __init__(self, tipo, nombre): self.tipo = tipo; self.nombre = nombre
@@ -44,6 +56,7 @@ class NodoParametros(NodoAST):
     def traducirCPP(self): return f"{self.tipo[1]} {self.nombre[1]}"
     def traducirGo(self): return f"{self.nombre[1]} {'float64' if self.tipo[1] in ['float', 'double'] else self.tipo[1]}"
     def traducirRuby(self): return self.nombre[1]
+    def to_dict(self): return {"Tipo": "Parametro", "Nombre": self.nombre[1], "Dato": self.tipo[1]}
 
 class NodoAsignacion(NodoAST):
     def __init__(self, tipo, nombre, expresion): self.tipo = tipo; self.nombre = nombre; self.expresion = expresion
@@ -51,6 +64,7 @@ class NodoAsignacion(NodoAST):
     def traducirCPP(self): return f"{self.tipo[1]} {self.nombre[1]} = {self.expresion.traducirCPP()}"
     def traducirGo(self): return f"var {self.nombre[1]} {'float64' if self.tipo[1] in ['float', 'double'] else self.tipo[1]} = {self.expresion.traducirGo()}"
     def traducirRuby(self): return f"{self.nombre[1]} = {self.expresion.traducirRuby()}"
+    def to_dict(self): return {"Tipo": "Asignacion", "Variable": self.nombre[1], "Expresion": self.expresion.to_dict()}
 
 class NodoOperacion(NodoAST):
     def __init__(self, izquierda, operador, derecha): self.izquierda = izquierda; self.operador = operador; self.derecha = derecha
@@ -58,6 +72,7 @@ class NodoOperacion(NodoAST):
     def traducirCPP(self): return f"{self.izquierda.traducirCPP()} {self.operador[1]} {self.derecha.traducirCPP()}"
     def traducirGo(self): return f"{self.izquierda.traducirGo()} {self.operador[1]} {self.derecha.traducirGo()}"
     def traducirRuby(self): return f"{self.izquierda.traducirRuby()} {self.operador[1]} {self.derecha.traducirRuby()}"
+    def to_dict(self): return {"Tipo": "Operacion", "Operador": self.operador[1], "Izquierda": self.izquierda.to_dict(), "Derecha": self.derecha.to_dict()}
 
 class NodoRetorno(NodoAST):
     def __init__(self, expresion): self.expresion = expresion
@@ -65,6 +80,7 @@ class NodoRetorno(NodoAST):
     def traducirCPP(self): return f"return {self.expresion.traducirCPP()}"
     def traducirGo(self): return f"return {self.expresion.traducirGo()}"
     def traducirRuby(self): return f"return {self.expresion.traducirRuby()}"
+    def to_dict(self): return {"Tipo": "Retorno", "Valor": self.expresion.to_dict()}
 
 class NodoIdentificador(NodoAST):
     def __init__(self, nombre): self.nombre = nombre
@@ -72,6 +88,7 @@ class NodoIdentificador(NodoAST):
     def traducirCPP(self): return self.nombre[1]
     def traducirGo(self): return self.nombre[1]
     def traducirRuby(self): return self.nombre[1]
+    def to_dict(self): return {"Identificador": self.nombre[1]}
 
 class NodoNumero(NodoAST):
     def __init__(self, valor): self.valor = valor
@@ -79,6 +96,7 @@ class NodoNumero(NodoAST):
     def traducirCPP(self): return str(self.valor[1])
     def traducirGo(self): return str(self.valor[1])
     def traducirRuby(self): return str(self.valor[1])
+    def to_dict(self): return {"Numero": str(self.valor[1])}
 
 class Parser:
     def __init__(self, tokens): self.tokens = tokens; self.pos = 0
