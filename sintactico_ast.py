@@ -4,6 +4,7 @@ class NodoAST:
     def traducirGo(self): raise NotImplementedError()
     def traducirRuby(self): raise NotImplementedError()
     def to_dict(self): raise NotImplementedError()
+    def traducirASM(self, ctx): return "" # Método base para Ensamblador
 
 class NodoString(NodoAST):
     def __init__(self, valor): self.valor = valor
@@ -12,14 +13,45 @@ class NodoString(NodoAST):
     def traducirGo(self): return self.valor[1]
     def traducirRuby(self): return self.valor[1]
     def to_dict(self): return {"Tipo": "String", "Valor": self.valor[1]}
+    
+    def traducirASM(self, ctx):
+        # Crear variable en .data para el string
+        str_id = f"str_{len(ctx['strings'])}"
+        valor_limpio = self.valor[1].replace('"', '')
+        ctx['strings'].append(f"{str_id} db '{valor_limpio}', 0")
+        ctx['strings'].append(f"{str_id}_len equ $ - {str_id}")
+        
+        # Generar sys_write
+        asm = f"    mov rax, 1\n"
+        asm += f"    mov rdi, 1\n"
+        asm += f"    mov rsi, {str_id}\n"
+        asm += f"    mov rdx, {str_id}_len\n"
+        asm += f"    syscall\n"
+        return asm
 
 class NodoPrint(NodoAST):
-    def __init__(self, expresiones): self.expresiones = expresiones
+    def __init__(self, expresiones, is_println=True): 
+        self.expresiones = expresiones
+        self.is_println = is_println
+
     def traducirPy(self): return f"print({', '.join(e.traducirPy() for e in self.expresiones)})"
     def traducirCPP(self): return f"std::cout << {' << '.join(e.traducirCPP() for e in self.expresiones)} << std::endl"
     def traducirGo(self): return f"fmt.Println({', '.join(e.traducirGo() for e in self.expresiones)})"
     def traducirRuby(self): return f"puts {', '.join(e.traducirRuby() for e in self.expresiones)}"
-    def to_dict(self): return {"Tipo": "SentenciaPrint", "Expresiones": [e.to_dict() for e in self.expresiones]}
+    def to_dict(self): return {"Tipo": "SentenciaPrint", "IsPrintln": self.is_println, "Expresiones": [e.to_dict() for e in self.expresiones]}
+
+    def traducirASM(self, ctx):
+        asm = ""
+        for e in self.expresiones:
+            if isinstance(e, NodoString):
+                asm += e.traducirASM(ctx)
+            elif isinstance(e, NodoNumero) or isinstance(e, NodoIdentificador):
+                asm += e.traducirASM(ctx)
+                asm += "    call print_int\n"
+        
+        if self.is_println:
+            asm += "    call print_newline\n"
+        return asm
 
 class NodoIf(NodoAST):
     def __init__(self, condicion, cuerpo_if, cuerpo_else=None):
@@ -69,6 +101,12 @@ class NodoIf(NodoAST):
         if self.cuerpo_else:
             res["CuerpoElse"] = [c.to_dict() for c in self.cuerpo_else]
         return res
+        
+    def traducirASM(self, ctx):
+        # Implementación simplificada para enfocar en print/println
+        asm = ""
+        for c in self.cuerpo_if: asm += c.traducirASM(ctx)
+        return asm
 
 class NodoWhile(NodoAST):
     def __init__(self, condicion, cuerpo):
@@ -102,6 +140,12 @@ class NodoWhile(NodoAST):
             "Condicion": self.condicion.to_dict(),
             "Cuerpo": [c.to_dict() for c in self.cuerpo]
         }
+        
+    def traducirASM(self, ctx):
+        # Implementación simplificada para enfocar en print/println
+        asm = ""
+        for c in self.cuerpo: asm += c.traducirASM(ctx)
+        return asm
 
 class NodoFor(NodoAST):
     def __init__(self, inicializacion, condicion, incremento, cuerpo):
@@ -150,6 +194,11 @@ class NodoFor(NodoAST):
             "Incremento": self.incremento.to_dict(),
             "Cuerpo": [c.to_dict() for c in self.cuerpo]
         }
+        
+    def traducirASM(self, ctx):
+        asm = self.inicializacion.traducirASM(ctx)
+        for c in self.cuerpo: asm += c.traducirASM(ctx)
+        return asm
 
 class NodoFuncion(NodoAST):
     def __init__(self, tipo, nombre, parametros, cuerpo):
@@ -179,6 +228,15 @@ class NodoFuncion(NodoAST):
             "Parametros": [p.to_dict() for p in self.parametros],
             "Cuerpo": [c.to_dict() for c in self.cuerpo]
         }
+        
+    def traducirASM(self, ctx):
+        asm = f"global _start\n"
+        asm += f"_start:\n"
+        for c in self.cuerpo:
+            asm += c.traducirASM(ctx)
+        # Salida del programa
+        asm += "    mov rax, 60\n    xor rdi, rdi\n    syscall\n"
+        return asm
 
 class NodoParametros(NodoAST):
     def __init__(self, tipo, nombre): self.tipo = tipo; self.nombre = nombre
@@ -195,6 +253,13 @@ class NodoAsignacion(NodoAST):
     def traducirGo(self): return f"var {self.nombre[1]} {'float64' if self.tipo[1] in ['float', 'double'] else self.tipo[1]} = {self.expresion.traducirGo()}"
     def traducirRuby(self): return f"{self.nombre[1]} = {self.expresion.traducirRuby()}"
     def to_dict(self): return {"Tipo": "Asignacion", "Variable": self.nombre[1], "Expresion": self.expresion.to_dict()}
+    
+    def traducirASM(self, ctx):
+        var_name = f"var_{self.nombre[1]}"
+        if var_name not in ctx['bss']: ctx['bss'].append(var_name)
+        asm = self.expresion.traducirASM(ctx)
+        asm += f"    mov [{var_name}], rax\n"
+        return asm
 
 class NodoReasignacion(NodoAST):
     def __init__(self, nombre, expresion): self.nombre = nombre; self.expresion = expresion
@@ -204,6 +269,12 @@ class NodoReasignacion(NodoAST):
     def traducirRuby(self): return f"{self.nombre[1]} = {self.expresion.traducirRuby()}"
     def to_dict(self): return {"Tipo": "Reasignacion", "Variable": self.nombre[1], "Expresion": self.expresion.to_dict()}
 
+    def traducirASM(self, ctx):
+        var_name = f"var_{self.nombre[1]}"
+        asm = self.expresion.traducirASM(ctx)
+        asm += f"    mov [{var_name}], rax\n"
+        return asm
+
 class NodoOperacion(NodoAST):
     def __init__(self, izquierda, operador, derecha): self.izquierda = izquierda; self.operador = operador; self.derecha = derecha
     def traducirPy(self): return f"{self.izquierda.traducirPy()} {self.operador[1]} {self.derecha.traducirPy()}"
@@ -211,6 +282,17 @@ class NodoOperacion(NodoAST):
     def traducirGo(self): return f"{self.izquierda.traducirGo()} {self.operador[1]} {self.derecha.traducirGo()}"
     def traducirRuby(self): return f"{self.izquierda.traducirRuby()} {self.operador[1]} {self.derecha.traducirRuby()}"
     def to_dict(self): return {"Tipo": "Operacion", "Operador": self.operador[1], "Izquierda": self.izquierda.to_dict(), "Derecha": self.derecha.to_dict()}
+    
+    def traducirASM(self, ctx):
+        asm = self.izquierda.traducirASM(ctx)
+        asm += "    push rax\n"
+        asm += self.derecha.traducirASM(ctx)
+        asm += "    mov rbx, rax\n"
+        asm += "    pop rax\n"
+        if self.operador[1] == '+': asm += "    add rax, rbx\n"
+        elif self.operador[1] == '-': asm += "    sub rax, rbx\n"
+        elif self.operador[1] == '*': asm += "    imul rax, rbx\n"
+        return asm
 
 class NodoRetorno(NodoAST):
     def __init__(self, expresion): self.expresion = expresion
@@ -219,6 +301,7 @@ class NodoRetorno(NodoAST):
     def traducirGo(self): return f"return {self.expresion.traducirGo()}"
     def traducirRuby(self): return f"return {self.expresion.traducirRuby()}"
     def to_dict(self): return {"Tipo": "Retorno", "Valor": self.expresion.to_dict()}
+    def traducirASM(self, ctx): return "" 
 
 class NodoIdentificador(NodoAST):
     def __init__(self, nombre): self.nombre = nombre
@@ -227,6 +310,10 @@ class NodoIdentificador(NodoAST):
     def traducirGo(self): return self.nombre[1]
     def traducirRuby(self): return self.nombre[1]
     def to_dict(self): return {"Identificador": self.nombre[1]}
+    
+    def traducirASM(self, ctx):
+        var_name = f"var_{self.nombre[1]}"
+        return f"    mov rax, [{var_name}]\n"
 
 class NodoNumero(NodoAST):
     def __init__(self, valor): self.valor = valor
@@ -235,6 +322,9 @@ class NodoNumero(NodoAST):
     def traducirGo(self): return str(self.valor[1])
     def traducirRuby(self): return str(self.valor[1])
     def to_dict(self): return {"Numero": str(self.valor[1])}
+    
+    def traducirASM(self, ctx):
+        return f"    mov rax, {self.valor[1]}\n"
 
 
 class Parser:
@@ -290,7 +380,7 @@ class Parser:
                 instrucciones.append(self.asignacion())
             elif token[0] == 'IDENTIFIER':
                 reasig = self.reasignacion()
-                self.coincidir('DELIMITER') # Consume el punto y coma final
+                self.coincidir('DELIMITER') 
                 instrucciones.append(reasig)
             else:
                 raise SyntaxError(f"Instruccion no reconocida: {token}")
@@ -326,25 +416,28 @@ class Parser:
         return NodoWhile(condicion, cuerpo)
 
     def sentencia_for(self):
-        self.coincidir('KEYWORD') # for
-        self.coincidir('DELIMITER') # (
-        inicializacion = self.asignacion() # asignacion ya consume el primer ';'
+        self.coincidir('KEYWORD') 
+        self.coincidir('DELIMITER') 
+        inicializacion = self.asignacion() 
         condicion = self.expresion()
-        self.coincidir('DELIMITER') # consume el segundo ';'
-        incremento = self.reasignacion() # reasignacion no lleva ';' al final dentro de los parentesis
-        self.coincidir('DELIMITER') # )
-        self.coincidir('DELIMITER') # {
+        self.coincidir('DELIMITER') 
+        incremento = self.reasignacion() 
+        self.coincidir('DELIMITER') 
+        self.coincidir('DELIMITER') 
         cuerpo = self.cuerpo()
-        self.coincidir('DELIMITER') # }
+        self.coincidir('DELIMITER') 
         return NodoFor(inicializacion, condicion, incremento, cuerpo)
 
     def sentencia_imprimir(self):
-        self.coincidir('KEYWORD')
+        # AQUI es donde diferenciamos print de println
+        comando = self.coincidir('KEYWORD')[1]
+        is_println = (comando == 'println')
+        
         self.coincidir('DELIMITER')
         args = self.lista_argumentos()
         self.coincidir('DELIMITER')
         self.coincidir('DELIMITER')
-        return NodoPrint(args)
+        return NodoPrint(args, is_println)
 
     def lista_argumentos(self):
         args = []

@@ -5,7 +5,7 @@ token_patron = {
     "IDENTIFIER": r'\b[a-zA-Z_][a-zA-Z0-9_]*\b',
     "NUMBER": r'\b\d+(\.\d+)?\b',
     "STRING": r'"[^"]*"', 
-    "OPERATOR": r'[+\-*/=<>]',
+    "OPERATOR": r'==|<=|>=|[+\-*/=<>]',
     "DELIMITER": r'[(),;{}]',
     "WHITESPACE": r'\s+',
 }
