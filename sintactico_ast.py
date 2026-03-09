@@ -21,6 +21,55 @@ class NodoPrint(NodoAST):
     def traducirRuby(self): return f"puts {', '.join(e.traducirRuby() for e in self.expresiones)}"
     def to_dict(self): return {"Tipo": "SentenciaPrint", "Expresiones": [e.to_dict() for e in self.expresiones]}
 
+class NodoIf(NodoAST):
+    def __init__(self, condicion, cuerpo_if, cuerpo_else=None):
+        self.condicion = condicion
+        self.cuerpo_if = cuerpo_if
+        self.cuerpo_else = cuerpo_else
+
+    def traducirPy(self):
+        res = f"if {self.condicion.traducirPy()}:\n"
+        res += "    " + "\n    ".join(c.traducirPy() for c in self.cuerpo_if)
+        if self.cuerpo_else:
+            res += "\nelse:\n"
+            res += "    " + "\n    ".join(c.traducirPy() for c in self.cuerpo_else)
+        return res
+
+    def traducirCPP(self):
+        res = f"if ({self.condicion.traducirCPP()}) {{\n"
+        res += "    " + ";\n    ".join(c.traducirCPP() for c in self.cuerpo_if) + ";\n}"
+        if self.cuerpo_else:
+            res += " else {\n"
+            res += "    " + ";\n    ".join(c.traducirCPP() for c in self.cuerpo_else) + ";\n}"
+        return res
+
+    def traducirGo(self):
+        res = f"if {self.condicion.traducirGo()} {{\n"
+        res += "    " + "\n    ".join(c.traducirGo() for c in self.cuerpo_if) + "\n}"
+        if self.cuerpo_else:
+            res += " else {\n"
+            res += "    " + "\n    ".join(c.traducirGo() for c in self.cuerpo_else) + "\n}"
+        return res
+
+    def traducirRuby(self):
+        res = f"if {self.condicion.traducirRuby()}\n"
+        res += "    " + "\n    ".join(c.traducirRuby() for c in self.cuerpo_if)
+        if self.cuerpo_else:
+            res += "\nelse\n"
+            res += "    " + "\n    ".join(c.traducirRuby() for c in self.cuerpo_else)
+        res += "\nend"
+        return res
+
+    def to_dict(self):
+        res = {
+            "Tipo": "SentenciaIf",
+            "Condicion": self.condicion.to_dict(),
+            "CuerpoIf": [c.to_dict() for c in self.cuerpo_if]
+        }
+        if self.cuerpo_else:
+            res["CuerpoElse"] = [c.to_dict() for c in self.cuerpo_else]
+        return res
+
 class NodoFuncion(NodoAST):
     def __init__(self, tipo, nombre, parametros, cuerpo):
         self.tipo = tipo; self.nombre = nombre; self.parametros = parametros; self.cuerpo = cuerpo
@@ -144,8 +193,28 @@ class Parser:
             token = self.obtener_token_actual()
             if token[1] == 'return': instrucciones.append(self.retorno())
             elif token[1] in ['print', 'printf', 'println']: instrucciones.append(self.sentencia_imprimir())
+            elif token[1] == 'if': instrucciones.append(self.sentencia_if())
             else: instrucciones.append(self.asignacion())
         return instrucciones
+
+    def sentencia_if(self):
+        self.coincidir('KEYWORD')
+        self.coincidir('DELIMITER')
+        condicion = self.expresion()
+        self.coincidir('DELIMITER')
+        self.coincidir('DELIMITER')
+        cuerpo_if = self.cuerpo()
+        self.coincidir('DELIMITER')
+        
+        cuerpo_else = None
+        token = self.obtener_token_actual()
+        if token and token[1] == 'else':
+            self.coincidir('KEYWORD')
+            self.coincidir('DELIMITER')
+            cuerpo_else = self.cuerpo()
+            self.coincidir('DELIMITER')
+            
+        return NodoIf(condicion, cuerpo_if, cuerpo_else)
 
     def sentencia_imprimir(self):
         self.coincidir('KEYWORD')
