@@ -70,6 +70,87 @@ class NodoIf(NodoAST):
             res["CuerpoElse"] = [c.to_dict() for c in self.cuerpo_else]
         return res
 
+class NodoWhile(NodoAST):
+    def __init__(self, condicion, cuerpo):
+        self.condicion = condicion
+        self.cuerpo = cuerpo
+
+    def traducirPy(self):
+        res = f"while {self.condicion.traducirPy()}:\n"
+        res += "    " + "\n    ".join(c.traducirPy() for c in self.cuerpo)
+        return res
+
+    def traducirCPP(self):
+        res = f"while ({self.condicion.traducirCPP()}) {{\n"
+        res += "    " + ";\n    ".join(c.traducirCPP() for c in self.cuerpo) + ";\n}"
+        return res
+
+    def traducirGo(self):
+        res = f"for {self.condicion.traducirGo()} {{\n"
+        res += "    " + "\n    ".join(c.traducirGo() for c in self.cuerpo) + "\n}"
+        return res
+
+    def traducirRuby(self):
+        res = f"while {self.condicion.traducirRuby()}\n"
+        res += "    " + "\n    ".join(c.traducirRuby() for c in self.cuerpo)
+        res += "\nend"
+        return res
+
+    def to_dict(self):
+        return {
+            "Tipo": "SentenciaWhile",
+            "Condicion": self.condicion.to_dict(),
+            "Cuerpo": [c.to_dict() for c in self.cuerpo]
+        }
+
+class NodoFor(NodoAST):
+    def __init__(self, inicializacion, condicion, incremento, cuerpo):
+        self.inicializacion = inicializacion
+        self.condicion = condicion
+        self.incremento = incremento
+        self.cuerpo = cuerpo
+
+    def traducirPy(self):
+        res = f"{self.inicializacion.traducirPy()}\n"
+        res += f"while {self.condicion.traducirPy()}:\n"
+        cuerpo_str = "\n    ".join(c.traducirPy() for c in self.cuerpo)
+        if cuerpo_str: res += "    " + cuerpo_str + "\n"
+        res += "    " + self.incremento.traducirPy()
+        return res
+
+    def traducirCPP(self):
+        init = self.inicializacion.traducirCPP()
+        cond = self.condicion.traducirCPP()
+        inc = self.incremento.traducirCPP()
+        res = f"for ({init}; {cond}; {inc}) {{\n"
+        res += "    " + ";\n    ".join(c.traducirCPP() for c in self.cuerpo) + ";\n}"
+        return res
+
+    def traducirGo(self):
+        init = self.inicializacion.traducirGo()
+        cond = self.condicion.traducirGo()
+        inc = self.incremento.traducirGo()
+        res = f"for {init}; {cond}; {inc} {{\n"
+        res += "    " + "\n    ".join(c.traducirGo() for c in self.cuerpo) + "\n}"
+        return res
+
+    def traducirRuby(self):
+        res = f"{self.inicializacion.traducirRuby()}\n"
+        res += f"while {self.condicion.traducirRuby()}\n"
+        cuerpo_str = "\n    ".join(c.traducirRuby() for c in self.cuerpo)
+        if cuerpo_str: res += "    " + cuerpo_str + "\n"
+        res += "    " + self.incremento.traducirRuby() + "\nend"
+        return res
+
+    def to_dict(self):
+        return {
+            "Tipo": "SentenciaFor",
+            "Inicializacion": self.inicializacion.to_dict(),
+            "Condicion": self.condicion.to_dict(),
+            "Incremento": self.incremento.to_dict(),
+            "Cuerpo": [c.to_dict() for c in self.cuerpo]
+        }
+
 class NodoFuncion(NodoAST):
     def __init__(self, tipo, nombre, parametros, cuerpo):
         self.tipo = tipo; self.nombre = nombre; self.parametros = parametros; self.cuerpo = cuerpo
@@ -115,6 +196,14 @@ class NodoAsignacion(NodoAST):
     def traducirRuby(self): return f"{self.nombre[1]} = {self.expresion.traducirRuby()}"
     def to_dict(self): return {"Tipo": "Asignacion", "Variable": self.nombre[1], "Expresion": self.expresion.to_dict()}
 
+class NodoReasignacion(NodoAST):
+    def __init__(self, nombre, expresion): self.nombre = nombre; self.expresion = expresion
+    def traducirPy(self): return f"{self.nombre[1]} = {self.expresion.traducirPy()}"
+    def traducirCPP(self): return f"{self.nombre[1]} = {self.expresion.traducirCPP()}"
+    def traducirGo(self): return f"{self.nombre[1]} = {self.expresion.traducirGo()}"
+    def traducirRuby(self): return f"{self.nombre[1]} = {self.expresion.traducirRuby()}"
+    def to_dict(self): return {"Tipo": "Reasignacion", "Variable": self.nombre[1], "Expresion": self.expresion.to_dict()}
+
 class NodoOperacion(NodoAST):
     def __init__(self, izquierda, operador, derecha): self.izquierda = izquierda; self.operador = operador; self.derecha = derecha
     def traducirPy(self): return f"{self.izquierda.traducirPy()} {self.operador[1]} {self.derecha.traducirPy()}"
@@ -146,6 +235,7 @@ class NodoNumero(NodoAST):
     def traducirGo(self): return str(self.valor[1])
     def traducirRuby(self): return str(self.valor[1])
     def to_dict(self): return {"Numero": str(self.valor[1])}
+
 
 class Parser:
     def __init__(self, tokens): self.tokens = tokens; self.pos = 0
@@ -194,7 +284,16 @@ class Parser:
             if token[1] == 'return': instrucciones.append(self.retorno())
             elif token[1] in ['print', 'printf', 'println']: instrucciones.append(self.sentencia_imprimir())
             elif token[1] == 'if': instrucciones.append(self.sentencia_if())
-            else: instrucciones.append(self.asignacion())
+            elif token[1] == 'while': instrucciones.append(self.sentencia_while())
+            elif token[1] == 'for': instrucciones.append(self.sentencia_for())
+            elif token[0] == 'KEYWORD': 
+                instrucciones.append(self.asignacion())
+            elif token[0] == 'IDENTIFIER':
+                reasig = self.reasignacion()
+                self.coincidir('DELIMITER') # Consume el punto y coma final
+                instrucciones.append(reasig)
+            else:
+                raise SyntaxError(f"Instruccion no reconocida: {token}")
         return instrucciones
 
     def sentencia_if(self):
@@ -215,6 +314,29 @@ class Parser:
             self.coincidir('DELIMITER')
             
         return NodoIf(condicion, cuerpo_if, cuerpo_else)
+
+    def sentencia_while(self):
+        self.coincidir('KEYWORD')
+        self.coincidir('DELIMITER')
+        condicion = self.expresion()
+        self.coincidir('DELIMITER')
+        self.coincidir('DELIMITER')
+        cuerpo = self.cuerpo()
+        self.coincidir('DELIMITER')
+        return NodoWhile(condicion, cuerpo)
+
+    def sentencia_for(self):
+        self.coincidir('KEYWORD') # for
+        self.coincidir('DELIMITER') # (
+        inicializacion = self.asignacion() # asignacion ya consume el primer ';'
+        condicion = self.expresion()
+        self.coincidir('DELIMITER') # consume el segundo ';'
+        incremento = self.reasignacion() # reasignacion no lleva ';' al final dentro de los parentesis
+        self.coincidir('DELIMITER') # )
+        self.coincidir('DELIMITER') # {
+        cuerpo = self.cuerpo()
+        self.coincidir('DELIMITER') # }
+        return NodoFor(inicializacion, condicion, incremento, cuerpo)
 
     def sentencia_imprimir(self):
         self.coincidir('KEYWORD')
@@ -243,6 +365,12 @@ class Parser:
         exp = self.expresion()
         self.coincidir('DELIMITER')
         return NodoAsignacion(tipo, nombre, exp)
+
+    def reasignacion(self):
+        nombre = self.coincidir('IDENTIFIER')
+        self.coincidir('OPERATOR')
+        exp = self.expresion()
+        return NodoReasignacion(nombre, exp)
 
     def retorno(self):
         self.coincidir('KEYWORD')

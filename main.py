@@ -4,13 +4,15 @@ from sintactico_ast import Parser
 
 codigo_fuente = """
 int main() {
-    int x = 10;
-    int y = 5;
+    int contador = 0;
     
-    if (x > y) {
-        println("x es mayor");
-    } else {
-        println("y es mayor o igual");
+    while (contador < 3) {
+        println("Contador es:", contador);
+        contador = contador + 1;
+    }
+
+    for (int i = 0; i < 2; i = i + 1) {
+        println("For index:", i);
     }
     
     return 0;
