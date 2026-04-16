@@ -30,23 +30,26 @@ class NodoPrint(NodoAST):
     def to_dict(self): return {"Tipo": "SentenciaPrint", "IsPrintln": self.is_println, "Expresiones": [e.to_dict() for e in self.expresiones]}
     def traducirASM(self, ctx):
         format_str = ""
-        args_code = ""
-        regs = ["rsi", "rdx", "rcx", "r8", "r9"]
-        for i, e in enumerate(self.expresiones):
+        asm = ""
+        gpr_regs = ["rsi", "rdx", "rcx", "r8", "r9"]
+        xmm_count = 0
+        gpr_count = 0
+        for e in self.expresiones:
             if isinstance(e, NodoString):
                 format_str += "%s"
                 s_id = e.traducirASM(ctx)
-                args_code += f"    lea {regs[i]}, [{s_id}]\n"
+                asm += f"    lea {gpr_regs[gpr_count]}, [{s_id}]\n"
+                gpr_count += 1
             else:
-                format_str += "%ld"
-                args_code += e.traducirASM(ctx)
-                args_code += f"    mov {regs[i]}, rax\n"
+                format_str += "%f"
+                asm += e.traducirASM(ctx)
+                asm += f"    movq xmm{xmm_count}, rax\n"
+                xmm_count += 1
         if self.is_println: format_str += "\\n"
         f_id = f"fmt_{len(ctx['strings'])}"
         ctx['strings'].append(f"{f_id} db '{format_str}', 0")
-        asm = args_code
         asm += f"    lea rdi, [{f_id}]\n"
-        asm += "    xor rax, rax\n"
+        asm += f"    mov rax, {xmm_count}\n"
         asm += "    call printf wrt ..plt\n"
         return asm
 
@@ -201,7 +204,7 @@ class NodoAsignacion(NodoAST):
         var_name = f"var_{self.nombre[1]}"
         if var_name not in ctx['bss']: ctx['bss'].append(var_name)
         asm = self.expresion.traducirASM(ctx)
-        asm += f"    mov [{var_name}], rax\n"
+        asm += f"    movq [{var_name}], rax\n"
         return asm
 
 class NodoReasignacion(NodoAST):
@@ -214,7 +217,7 @@ class NodoReasignacion(NodoAST):
     def traducirASM(self, ctx):
         var_name = f"var_{self.nombre[1]}"
         asm = self.expresion.traducirASM(ctx)
-        asm += f"    mov [{var_name}], rax\n"
+        asm += f"    movq [{var_name}], rax\n"
         return asm
 
 class NodoOperacion(NodoAST):
@@ -230,9 +233,13 @@ class NodoOperacion(NodoAST):
         asm += self.derecha.traducirASM(ctx)
         asm += "    mov rbx, rax\n"
         asm += "    pop rax\n"
-        if self.operador[1] == '+': asm += "    add rax, rbx\n"
-        elif self.operador[1] == '-': asm += "    sub rax, rbx\n"
-        elif self.operador[1] == '*': asm += "    imul rax, rbx\n"
+        asm += "    movq xmm0, rax\n"
+        asm += "    movq xmm1, rbx\n"
+        if self.operador[1] == '+': asm += "    addsd xmm0, xmm1\n"
+        elif self.operador[1] == '-': asm += "    subsd xmm0, xmm1\n"
+        elif self.operador[1] == '*': asm += "    mulsd xmm0, xmm1\n"
+        elif self.operador[1] == '/': asm += "    divsd xmm0, xmm1\n"
+        asm += "    movq rax, xmm0\n"
         return asm
 
 class NodoRetorno(NodoAST):
@@ -262,7 +269,12 @@ class NodoNumero(NodoAST):
     def traducirGo(self): return str(self.valor[1])
     def traducirRuby(self): return str(self.valor[1])
     def to_dict(self): return {"Numero": str(self.valor[1])}
-    def traducirASM(self, ctx): return f"    mov rax, {self.valor[1]}\n"
+    def traducirASM(self, ctx):
+        val_str = str(self.valor[1])
+        if '.' not in val_str: val_str += ".0"
+        num_id = f"num_{len(ctx['strings'])}"
+        ctx['strings'].append(f"{num_id} dq {val_str}")
+        return f"    mov rax, [{num_id}]\n"
 
 class Parser:
     def __init__(self, tokens): self.tokens = tokens; self.pos = 0
@@ -272,18 +284,16 @@ class Parser:
         if token and token[0] == tipo_esperado: 
             self.pos += 1
             return token
-        raise SyntaxError(f'Error sintactico: se esperaba {tipo_esperado}, pero se encontro: {token}')
+        raise SyntaxError(f'Error: {tipo_esperado}, encontro: {token}')
     def parsear(self): return self.funcion()
     def funcion(self):
-        tipo = self.coincidir('KEYWORD')
-        nombre = self.coincidir('IDENTIFIER')
+        tipo = self.coincidir('KEYWORD'); nombre = self.coincidir('IDENTIFIER')
         self.coincidir('DELIMITER'); parametros = self.parametros(); self.coincidir('DELIMITER'); self.coincidir('DELIMITER')
         cuerpo = self.cuerpo(); self.coincidir('DELIMITER')
         return NodoFuncion(tipo, nombre, parametros, cuerpo)
     def parametros(self):
         lista = []
-        token = self.obtener_token_actual()
-        if token and token[1] == ')': return lista
+        if self.obtener_token_actual()[1] == ')': return lista
         tipo = self.coincidir('KEYWORD'); nombre = self.coincidir('IDENTIFIER'); lista.append(NodoParametros(tipo, nombre))
         while self.obtener_token_actual() and self.obtener_token_actual()[1] == ',':
             self.coincidir('DELIMITER'); tipo = self.coincidir('KEYWORD'); nombre = self.coincidir('IDENTIFIER')
@@ -308,8 +318,7 @@ class Parser:
         self.coincidir('KEYWORD'); self.coincidir('DELIMITER'); condicion = self.expresion()
         self.coincidir('DELIMITER'); self.coincidir('DELIMITER'); cuerpo_if = self.cuerpo(); self.coincidir('DELIMITER')
         cuerpo_else = None
-        token = self.obtener_token_actual()
-        if token and token[1] == 'else':
+        if self.obtener_token_actual() and self.obtener_token_actual()[1] == 'else':
             self.coincidir('KEYWORD'); self.coincidir('DELIMITER'); cuerpo_else = self.cuerpo(); self.coincidir('DELIMITER')
         return NodoIf(condicion, cuerpo_if, cuerpo_else)
     def sentencia_while(self):
