@@ -1,3 +1,23 @@
+class SemanticError(Exception):
+    pass
+
+class TablaSimbolos:
+    def __init__(self, padre=None):
+        self.simbolos = {}
+        self.padre = padre
+
+    def declarar(self, nombre, tipo):
+        if nombre in self.simbolos:
+            raise SemanticError(f"Error semantico: La variable '{nombre}' ya ha sido declarada en este ambito.")
+        self.simbolos[nombre] = tipo
+
+    def buscar(self, nombre):
+        if nombre in self.simbolos:
+            return self.simbolos[nombre]
+        if self.padre:
+            return self.padre.buscar(nombre)
+        return None
+
 class NodoAST:
     def traducirPy(self): raise NotImplementedError()
     def traducirCPP(self): raise NotImplementedError()
@@ -5,6 +25,7 @@ class NodoAST:
     def traducirRuby(self): raise NotImplementedError()
     def to_dict(self): raise NotImplementedError()
     def traducirASM(self, ctx): return ""
+    def validar_semantica(self, tabla): pass
 
 class NodoString(NodoAST):
     def __init__(self, valor): self.valor = valor
@@ -18,6 +39,7 @@ class NodoString(NodoAST):
         valor_limpio = self.valor[1].replace('"', '')
         ctx['strings'].append(f"{str_id} db '{valor_limpio}', 0")
         return str_id
+    def validar_semantica(self, tabla): return "string"
 
 class NodoPrint(NodoAST):
     def __init__(self, expresiones, is_println=True): 
@@ -52,6 +74,8 @@ class NodoPrint(NodoAST):
         asm += f"    mov rax, {xmm_count}\n"
         asm += "    call printf wrt ..plt\n"
         return asm
+    def validar_semantica(self, tabla):
+        for e in self.expresiones: e.validar_semantica(tabla)
 
 class NodoIf(NodoAST):
     def __init__(self, condicion, cuerpo_if, cuerpo_else=None):
@@ -95,6 +119,13 @@ class NodoIf(NodoAST):
         asm = ""
         for c in self.cuerpo_if: asm += c.traducirASM(ctx)
         return asm
+    def validar_semantica(self, tabla):
+        self.condicion.validar_semantica(tabla)
+        tabla_local = TablaSimbolos(tabla)
+        for c in self.cuerpo_if: c.validar_semantica(tabla_local)
+        if self.cuerpo_else:
+            tabla_else = TablaSimbolos(tabla)
+            for c in self.cuerpo_else: c.validar_semantica(tabla_else)
 
 class NodoWhile(NodoAST):
     def __init__(self, condicion, cuerpo):
@@ -123,6 +154,10 @@ class NodoWhile(NodoAST):
         asm = ""
         for c in self.cuerpo: asm += c.traducirASM(ctx)
         return asm
+    def validar_semantica(self, tabla):
+        self.condicion.validar_semantica(tabla)
+        tabla_local = TablaSimbolos(tabla)
+        for c in self.cuerpo: c.validar_semantica(tabla_local)
 
 class NodoFor(NodoAST):
     def __init__(self, inicializacion, condicion, incremento, cuerpo):
@@ -164,6 +199,12 @@ class NodoFor(NodoAST):
         asm = self.inicializacion.traducirASM(ctx)
         for c in self.cuerpo: asm += c.traducirASM(ctx)
         return asm
+    def validar_semantica(self, tabla):
+        tabla_local = TablaSimbolos(tabla)
+        self.inicializacion.validar_semantica(tabla_local)
+        self.condicion.validar_semantica(tabla_local)
+        self.incremento.validar_semantica(tabla_local)
+        for c in self.cuerpo: c.validar_semantica(tabla_local)
 
 class NodoFuncion(NodoAST):
     def __init__(self, tipo, nombre, parametros, cuerpo):
@@ -184,6 +225,10 @@ class NodoFuncion(NodoAST):
         for c in self.cuerpo: asm += c.traducirASM(ctx)
         asm += "    mov rsp, rbp\n    pop rbp\n    ret\n"
         return asm
+    def validar_semantica(self, tabla):
+        tabla_local = TablaSimbolos(tabla)
+        for p in self.parametros: p.validar_semantica(tabla_local)
+        for c in self.cuerpo: c.validar_semantica(tabla_local)
 
 class NodoParametros(NodoAST):
     def __init__(self, tipo, nombre): self.tipo = tipo; self.nombre = nombre
@@ -192,6 +237,8 @@ class NodoParametros(NodoAST):
     def traducirGo(self): return f"{self.nombre[1]} {'float64' if self.tipo[1] in ['float', 'double'] else self.tipo[1]}"
     def traducirRuby(self): return self.nombre[1]
     def to_dict(self): return {"Tipo": "Parametro", "Nombre": self.nombre[1], "Dato": self.tipo[1]}
+    def validar_semantica(self, tabla):
+        tabla.declarar(self.nombre[1], self.tipo[1])
 
 class NodoAsignacion(NodoAST):
     def __init__(self, tipo, nombre, expresion): self.tipo = tipo; self.nombre = nombre; self.expresion = expresion
@@ -206,6 +253,9 @@ class NodoAsignacion(NodoAST):
         asm = self.expresion.traducirASM(ctx)
         asm += f"    movq [{var_name}], rax\n"
         return asm
+    def validar_semantica(self, tabla):
+        tipo_exp = self.expresion.validar_semantica(tabla)
+        tabla.declarar(self.nombre[1], self.tipo[1])
 
 class NodoReasignacion(NodoAST):
     def __init__(self, nombre, expresion): self.nombre = nombre; self.expresion = expresion
@@ -219,6 +269,10 @@ class NodoReasignacion(NodoAST):
         asm = self.expresion.traducirASM(ctx)
         asm += f"    movq [{var_name}], rax\n"
         return asm
+    def validar_semantica(self, tabla):
+        if not tabla.buscar(self.nombre[1]):
+            raise SemanticError(f"Error semantico: La variable '{self.nombre[1]}' no ha sido declarada.")
+        self.expresion.validar_semantica(tabla)
 
 class NodoOperacion(NodoAST):
     def __init__(self, izquierda, operador, derecha): self.izquierda = izquierda; self.operador = operador; self.derecha = derecha
@@ -241,6 +295,10 @@ class NodoOperacion(NodoAST):
         elif self.operador[1] == '/': asm += "    divsd xmm0, xmm1\n"
         asm += "    movq rax, xmm0\n"
         return asm
+    def validar_semantica(self, tabla):
+        t1 = self.izquierda.validar_semantica(tabla)
+        t2 = self.derecha.validar_semantica(tabla)
+        return t1
 
 class NodoRetorno(NodoAST):
     def __init__(self, expresion): self.expresion = expresion
@@ -250,6 +308,7 @@ class NodoRetorno(NodoAST):
     def traducirRuby(self): return f"return {self.expresion.traducirRuby()}"
     def to_dict(self): return {"Tipo": "Retorno", "Valor": self.expresion.to_dict()}
     def traducirASM(self, ctx): return self.expresion.traducirASM(ctx)
+    def validar_semantica(self, tabla): self.expresion.validar_semantica(tabla)
 
 class NodoIdentificador(NodoAST):
     def __init__(self, nombre): self.nombre = nombre
@@ -261,6 +320,11 @@ class NodoIdentificador(NodoAST):
     def traducirASM(self, ctx):
         var_name = f"var_{self.nombre[1]}"
         return f"    mov rax, [{var_name}]\n"
+    def validar_semantica(self, tabla):
+        tipo = tabla.buscar(self.nombre[1])
+        if not tipo:
+            raise SemanticError(f"Error semantico: La variable '{self.nombre[1]}' no ha sido declarada.")
+        return tipo
 
 class NodoNumero(NodoAST):
     def __init__(self, valor): self.valor = valor
@@ -275,6 +339,8 @@ class NodoNumero(NodoAST):
         num_id = f"num_{len(ctx['strings'])}"
         ctx['strings'].append(f"{num_id} dq {val_str}")
         return f"    mov rax, [{num_id}]\n"
+    def validar_semantica(self, tabla):
+        return "float" if '.' in str(self.valor[1]) else "int"
 
 class Parser:
     def __init__(self, tokens): self.tokens = tokens; self.pos = 0

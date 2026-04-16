@@ -1,6 +1,6 @@
 import json
 from lexico import identificar_tokens
-from sintactico_ast import Parser
+from sintactico_ast import Parser, TablaSimbolos, SemanticError
 
 codigo_fuente = """
 float main() {
@@ -13,20 +13,29 @@ float main() {
 }
 """
 
-tokens = identificar_tokens(codigo_fuente)
-parser = Parser(tokens)
-arbol = parser.parsear()
+try:
+    tokens = identificar_tokens(codigo_fuente)
+    parser = Parser(tokens)
+    arbol = parser.parsear()
 
-ctx = {'strings': [], 'bss': []}
-codigo_text = arbol.traducirASM(ctx)
+    # Analisis Semantico
+    tabla_global = TablaSimbolos()
+    arbol.validar_semantica(tabla_global)
+    print("Analisis semantico completado exitosamente.\n")
 
-asm_final = "section .data\n"
-for s in ctx['strings']: asm_final += f"    {s}\n"
-asm_final += "\nsection .bss\n"
-for v in ctx['bss']: asm_final += f"    {v} resq 1\n"
-asm_final += "\nsection .text\n" + codigo_text
+    ctx = {'strings': [], 'bss': []}
+    codigo_text = arbol.traducirASM(ctx)
 
-with open("salida.asm", "w") as f: f.write(asm_final)
+    asm_final = "section .data\n"
+    for s in ctx['strings']: asm_final += f"    {s}\n"
+    asm_final += "\nsection .bss\n"
+    for v in ctx['bss']: asm_final += f"    {v} resq 1\n"
+    asm_final += "\nsection .text\n" + codigo_text
 
-print("Compilacion finalizada. 'salida.asm' generado.")
-print("Comandos: nasm -f elf64 salida.asm -o salida.o && gcc salida.o -no-pie -o programa")
+    with open("salida.asm", "w") as f: f.write(asm_final)
+    print("Compilacion finalizada. 'salida.asm' generado.")
+
+except SemanticError as e:
+    print(f"Error durante el analisis semantico: {e}")
+except Exception as e:
+    print(f"Error: {e}")
