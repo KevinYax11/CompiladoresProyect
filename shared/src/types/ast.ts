@@ -1,4 +1,21 @@
-export type ASTNodeType = 'Program' | 'IfStatement' | 'WhileStatement' | 'ExpressionStatement' | 'VariableDeclaration';
+export type ASTNodeType = 
+  | 'Program'
+  | 'BinaryOp'
+  | 'BreakContinue'
+  | 'DoWhile'
+  | 'ForEach'
+  | 'For'
+  | 'FunctionCall'
+  | 'FunctionDef'
+  | 'IfElse'
+  | 'If'
+  | 'Return'
+  | 'SwitchCase'
+  | 'Ternary'
+  | 'TryCatch'
+  | 'VariableDecl'
+  | 'While'
+  | 'ExpressionStatement';
 
 export interface ASTNode {
   type: ASTNodeType;
@@ -7,16 +24,4 @@ export interface ASTNode {
 export interface ProgramNode extends ASTNode {
   type: 'Program';
   body: ASTNode[];
-}
-
-export interface ExpressionStatementNode extends ASTNode {
-  type: 'ExpressionStatement';
-  expression: string;
-}
-
-export interface IfStatementNode extends ASTNode {
-  type: 'IfStatement';
-  condition: string;
-  consequent: ASTNode[];
-  alternate?: ASTNode[];
 }
