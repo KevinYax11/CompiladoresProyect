@@ -1,4 +1,4 @@
-import { ProgramNode, ASTNode, IfStatementNode, WhileStatementNode } from '../../../../../shared/src/types/ast';
+import { ProgramNode, ASTNode } from '../../../../shared/src/types/ast';
 
 export class DeadCodeRemoval {
   public optimize(program: ProgramNode): ProgramNode {
@@ -10,29 +10,23 @@ export class DeadCodeRemoval {
     const optimizedNodes: ASTNode[] = [];
 
     for (const node of nodes) {
-      if (node.type === 'IfStatement') {
-        const ifNode = node as IfStatementNode;
+      if (node.type === 'If') {
+        const ifNode = node as any;
         if (ifNode.condition === 'true' || ifNode.condition === '1') {
-          optimizedNodes.push(...this.removeDeadCode(ifNode.consequent));
+          optimizedNodes.push(...this.removeDeadCode(ifNode.consequent || []));
           continue;
         }
         if (ifNode.condition === 'false' || ifNode.condition === '0') {
-          if (ifNode.alternate) {
-            optimizedNodes.push(...this.removeDeadCode(ifNode.alternate));
-          }
           continue;
         }
-        ifNode.consequent = this.removeDeadCode(ifNode.consequent);
-        if (ifNode.alternate) {
-          ifNode.alternate = this.removeDeadCode(ifNode.alternate);
-        }
+        ifNode.consequent = this.removeDeadCode(ifNode.consequent || []);
         optimizedNodes.push(ifNode);
-      } else if (node.type === 'WhileStatement') {
-        const whileNode = node as WhileStatementNode;
+      } else if (node.type === 'While') {
+        const whileNode = node as any;
         if (whileNode.condition === 'false' || whileNode.condition === '0') {
           continue;
         }
-        whileNode.body = this.removeDeadCode(whileNode.body);
+        whileNode.body = this.removeDeadCode(whileNode.body || []);
         optimizedNodes.push(whileNode);
       } else {
         optimizedNodes.push(node);

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { FlowchartGraph } from '../../../../../shared/src/types/flowchart';
+import { FlowchartGraph } from '../../../../shared/src/types/flowchart';
 import { compileGraph } from '../../compiler/CompilerOrchestrator';
 
 export const compileController = (req: Request, res: Response) => {

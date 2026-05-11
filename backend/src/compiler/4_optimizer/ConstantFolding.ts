@@ -1,4 +1,4 @@
-import { ProgramNode, ASTNode, ExpressionStatementNode, IfStatementNode, WhileStatementNode, OutputStatementNode } from '../../../../../shared/src/types/ast';
+import { ProgramNode, ASTNode, OutputNode, AssignmentNode } from '../../../../shared/src/types/ast';
 
 export class ConstantFolding {
   public optimize(program: ProgramNode): ProgramNode {
@@ -12,26 +12,23 @@ export class ConstantFolding {
 
   private optimizeNode(node: ASTNode): ASTNode {
     switch (node.type) {
-      case 'ExpressionStatement':
-        const exprNode = node as ExpressionStatementNode;
-        exprNode.expression = this.evaluateSimpleMath(exprNode.expression);
-        return exprNode;
-      case 'OutputStatement':
-        const outNode = node as OutputStatementNode;
+      case 'Assignment':
+        const assignNode = node as AssignmentNode;
+        assignNode.expression = this.evaluateSimpleMath(assignNode.expression);
+        return assignNode;
+      case 'Output':
+        const outNode = node as OutputNode;
         outNode.expression = this.evaluateSimpleMath(outNode.expression);
         return outNode;
-      case 'IfStatement':
-        const ifNode = node as IfStatementNode;
+      case 'If':
+        const ifNode = node as any;
         ifNode.condition = this.evaluateSimpleMath(ifNode.condition);
-        ifNode.consequent = this.optimizeNodes(ifNode.consequent);
-        if (ifNode.alternate) {
-          ifNode.alternate = this.optimizeNodes(ifNode.alternate);
-        }
+        ifNode.consequent = this.optimizeNodes(ifNode.consequent || []);
         return ifNode;
-      case 'WhileStatement':
-        const whileNode = node as WhileStatementNode;
+      case 'While':
+        const whileNode = node as any;
         whileNode.condition = this.evaluateSimpleMath(whileNode.condition);
-        whileNode.body = this.optimizeNodes(whileNode.body);
+        whileNode.body = this.optimizeNodes(whileNode.body || []);
         return whileNode;
       default:
         return node;
@@ -39,6 +36,7 @@ export class ConstantFolding {
   }
 
   private evaluateSimpleMath(expression: string): string {
+    if (!expression) return expression;
     try {
       if (/^[0-9+\-*/().\s]+$/.test(expression)) {
         const result = new Function(`return ${expression}`)();

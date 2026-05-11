@@ -1,4 +1,4 @@
-import { ProgramNode, ASTNode } from '../../../../../shared/src/types/ast';
+import { ProgramNode, ASTNode } from '../../../../shared/src/types/ast';
 
 export abstract class BaseGenerator {
   protected abstract visitProgram(node: ProgramNode): string;
@@ -8,6 +8,9 @@ export abstract class BaseGenerator {
   protected abstract visitWhile(node: ASTNode): string;
   protected abstract visitFunctionCall(node: ASTNode): string;
   protected abstract visitReturn(node: ASTNode): string;
+  protected abstract visitAssignment(node: ASTNode): string;
+  protected abstract visitInput(node: ASTNode): string;
+  protected abstract visitOutput(node: ASTNode): string;
 
   public generate(ast: ProgramNode): string {
     return this.visitProgram(ast);
@@ -21,6 +24,10 @@ export abstract class BaseGenerator {
       case 'While': return this.visitWhile(node);
       case 'FunctionCall': return this.visitFunctionCall(node);
       case 'Return': return this.visitReturn(node);
+      case 'Assignment': return this.visitAssignment(node);
+      case 'Input': return this.visitInput(node);
+      case 'Output': return this.visitOutput(node);
+      case 'Program': return this.visitProgram(node as ProgramNode);
       default: return '';
     }
   }

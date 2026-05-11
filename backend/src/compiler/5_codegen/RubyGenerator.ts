@@ -1,4 +1,4 @@
-import { ProgramNode, ASTNode } from '../../../../../shared/src/types/ast';
+import { ProgramNode, ASTNode, InputNode, OutputNode, AssignmentNode } from '../../../../shared/src/types/ast';
 import { BaseGenerator } from './BaseGenerator';
 import { VariableDeclNode } from '../2_parser/ast_nodes/VariableDeclNode';
 import { BinaryOpNode } from '../2_parser/ast_nodes/BinaryOpNode';
@@ -15,7 +15,7 @@ export class RubyGenerator extends BaseGenerator {
   }
 
   protected visitProgram(node: ProgramNode): string {
-    return node.body.map(n => this.visitNode(n)).join('');
+    return node.body.map((n: ASTNode) => this.visitNode(n)).join('');
   }
 
   protected visitVariableDecl(node: ASTNode): string {
@@ -24,6 +24,26 @@ export class RubyGenerator extends BaseGenerator {
       return `${this.getIndent()}${n.identifier} = ${this.visitNode(n.init).trim()}\n`;
     }
     return `${this.getIndent()}${n.identifier} = nil\n`;
+  }
+
+  protected visitAssignment(node: ASTNode): string {
+    const n = node as AssignmentNode;
+    return `${this.getIndent()}${n.variableName} = ${n.expression}\n`;
+  }
+
+  protected visitInput(node: ASTNode): string {
+    const n = node as InputNode;
+    let result = '';
+    if (n.prompt) {
+      result += `${this.getIndent()}print "${n.prompt}: "\n`;
+    }
+    result += `${this.getIndent()}${n.variableName} = gets.chomp\n`;
+    return result;
+  }
+
+  protected visitOutput(node: ASTNode): string {
+    const n = node as OutputNode;
+    return `${this.getIndent()}puts ${n.expression}\n`;
   }
 
   protected visitBinaryOp(node: ASTNode): string {
@@ -38,7 +58,7 @@ export class RubyGenerator extends BaseGenerator {
     let result = `${this.getIndent()}if ${n.condition}\n`;
     
     this.indentLevel++;
-    result += n.consequent.map(child => this.visitNode(child)).join('');
+    result += n.consequent.map((child: ASTNode) => this.visitNode(child)).join('');
     this.indentLevel--;
     
     result += `${this.getIndent()}end\n`;
@@ -50,7 +70,7 @@ export class RubyGenerator extends BaseGenerator {
     let result = `${this.getIndent()}while ${n.condition}\n`;
     
     this.indentLevel++;
-    result += n.body.map(child => this.visitNode(child)).join('');
+    result += n.body.map((child: ASTNode) => this.visitNode(child)).join('');
     this.indentLevel--;
     
     result += `${this.getIndent()}end\n`;
@@ -59,7 +79,7 @@ export class RubyGenerator extends BaseGenerator {
 
   protected visitFunctionCall(node: ASTNode): string {
     const n = node as FunctionCallNode;
-    const args = n.args.map(arg => 'expression' in arg ? (arg as any).expression : this.visitNode(arg).replace('\n', '')).join(', ');
+    const args = n.args.map((arg: any) => 'expression' in arg ? (arg as any).expression : this.visitNode(arg).replace('\n', '')).join(', ');
     return `${this.getIndent()}${n.functionName}(${args})\n`;
   }
 

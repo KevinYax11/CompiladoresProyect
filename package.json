@@ -1,0 +1,9 @@
+{
+  "name": "polaris-visual-compiler",
+  "private": true,
+  "scripts": {
+    "dev:backend": "pnpm --filter polaris-compiler-backend dev",
+    "dev:frontend": "pnpm --filter polaris-visual-compiler-web dev",
+    "dev": "pnpm run dev:backend & pnpm run dev:frontend"
+  }
+}

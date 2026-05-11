@@ -1,4 +1,4 @@
-import { FlowchartGraph } from '../../../../shared/src/types/flowchart';
+import { FlowchartGraph } from '../../../shared/src/types/flowchart';
 import { FlowValidator } from './0_graph_analyzer/FlowValidator';
 import { GraphToAST } from './0_graph_analyzer/GraphToAST';
 import { TypeChecker } from './3_semantic/TypeChecker';

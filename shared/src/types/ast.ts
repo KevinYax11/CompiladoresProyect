@@ -15,7 +15,10 @@ export type ASTNodeType =
   | 'TryCatch'
   | 'VariableDecl'
   | 'While'
-  | 'ExpressionStatement';
+  | 'ExpressionStatement'
+  | 'Input'
+  | 'Output'
+  | 'Assignment';
 
 export interface ASTNode {
   type: ASTNodeType;
@@ -24,4 +27,21 @@ export interface ASTNode {
 export interface ProgramNode extends ASTNode {
   type: 'Program';
   body: ASTNode[];
+}
+
+export interface InputNode extends ASTNode {
+  type: 'Input';
+  variableName: string;
+  prompt?: string;
+}
+
+export interface OutputNode extends ASTNode {
+  type: 'Output';
+  expression: string;
+}
+
+export interface AssignmentNode extends ASTNode {
+  type: 'Assignment';
+  variableName: string;
+  expression: string;
 }

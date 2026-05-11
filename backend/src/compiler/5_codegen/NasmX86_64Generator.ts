@@ -1,4 +1,4 @@
-import { ProgramNode, ASTNode } from '../../../../../shared/src/types/ast';
+import { ProgramNode, ASTNode } from '../../../../shared/src/types/ast';
 import { BaseGenerator } from './BaseGenerator';
 import { VariableDeclNode } from '../2_parser/ast_nodes/VariableDeclNode';
 import { BinaryOpNode } from '../2_parser/ast_nodes/BinaryOpNode';
@@ -16,7 +16,7 @@ export class NasmX86_64Generator extends BaseGenerator {
 
   protected visitProgram(node: ProgramNode): string {
     let code = `section .data\nsection .bss\nsection .text\n    global main\n    extern printf\n\nmain:\n    push rbp\n    mov rbp, rsp\n\n`;
-    code += node.body.map(n => this.visitNode(n)).join('');
+    code += node.body.map((n: ASTNode) => this.visitNode(n)).join('');
     code += `\n    mov rsp, rbp\n    pop rbp\n    mov rax, 0\n    ret\n`;
     return code;
   }
@@ -36,7 +36,7 @@ export class NasmX86_64Generator extends BaseGenerator {
     const endLabel = this.getNextLabel();
 
     let code = `    ; if ${n.condition}\n    cmp rax, 0\n    je ${endLabel}\n`;
-    code += n.consequent.map(child => this.visitNode(child)).join('');
+    code += n.consequent.map((child: ASTNode) => this.visitNode(child)).join('');
     code += `${endLabel}:\n`;
     return code;
   }
@@ -48,7 +48,7 @@ export class NasmX86_64Generator extends BaseGenerator {
 
     let code = `${startLabel}:\n`;
     code += `    ; while ${n.condition}\n    cmp rax, 0\n    je ${endLabel}\n`;
-    code += n.body.map(child => this.visitNode(child)).join('');
+    code += n.body.map((child: ASTNode) => this.visitNode(child)).join('');
     code += `    jmp ${startLabel}\n${endLabel}:\n`;
     return code;
   }
@@ -60,5 +60,17 @@ export class NasmX86_64Generator extends BaseGenerator {
 
   protected visitReturn(node: ASTNode): string {
     return `    mov rax, 0\n    ret\n`;
+  }
+
+  protected visitAssignment(node: ASTNode): string {
+    return `    ; assignment not implemented in NASM\n`;
+  }
+
+  protected visitInput(node: ASTNode): string {
+    return `    ; input not implemented in NASM\n`;
+  }
+
+  protected visitOutput(node: ASTNode): string {
+    return `    ; output not implemented in NASM\n`;
   }
 }
